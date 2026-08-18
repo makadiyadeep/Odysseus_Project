@@ -117,6 +117,24 @@ def test_booking_quote_endpoint(client_and_db):
     assert body["quote_summary"]["final_total"] > 0
 
 
+def test_booking_quote_endpoint_accepts_camelcase_payload(client_and_db):
+    client, db = client_and_db
+    customer, cruise, _ = seed_data(db)
+
+    payload = {
+        "customerId": customer.id,
+        "cruiseId": cruise.id,
+        "passengers": [{"firstName": "Alice", "lastName": "One", "age": 18}, {"firstName": "Sophie", "lastName": "One", "age": 12}],
+        "services": [{"serviceType": "wifi", "quantity": 1}],
+        "promotionCode": "SUMMER10",
+    }
+    response = client.post("/api/bookings/quote", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["passenger_count"] == 2
+    assert body["quote_summary"]["final_total"] > 0
+
+
 def test_create_booking_and_get_by_reference(client_and_db):
     client, db = client_and_db
     customer, cruise, _ = seed_data(db)
@@ -141,6 +159,24 @@ def test_create_booking_and_get_by_reference(client_and_db):
     assert response.json()["booking_reference"] == booking_reference
 
 
+def test_create_booking_accepts_camelcase_payload(client_and_db):
+    client, db = client_and_db
+    customer, cruise, _ = seed_data(db)
+
+    payload = {
+        "customerId": customer.id,
+        "cruiseId": cruise.id,
+        "passengers": [{"firstName": "Alice", "lastName": "One", "age": 18}, {"firstName": "Sophie", "lastName": "One", "age": 12}],
+        "services": [{"serviceType": "wifi", "quantity": 1}],
+        "promotionCode": "SUMMER10",
+    }
+    response = client.post("/api/bookings", json=payload)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["booking_reference"].startswith("CR-")
+    assert body["promotion"]["code"] == "SUMMER10"
+
+
 def test_validate_promotion_endpoint(client_and_db):
     client, db = client_and_db
     customer, _, _ = seed_data(db)
@@ -153,3 +189,37 @@ def test_validate_promotion_endpoint(client_and_db):
     body = response.json()
     assert body["valid"] is True
     assert body["code"] == "SUMMER10"
+
+
+def test_validate_promotion_accepts_camelcase_payload(client_and_db):
+    client, db = client_and_db
+    customer, _, _ = seed_data(db)
+
+    response = client.post(
+        "/api/promotions/validate",
+        json={"customerId": customer.id, "cruiseId": 1, "promoCode": "SUMMER10", "bookingTotal": "2000"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["valid"] is True
+    assert body["code"] == "SUMMER10"
+
+
+def test_get_booking_by_numeric_id(client_and_db):
+    client, db = client_and_db
+    customer, cruise, _ = seed_data(db)
+
+    payload = {
+        "customerId": customer.id,
+        "cruiseId": cruise.id,
+        "passengers": [{"firstName": "Alice", "lastName": "One", "age": 18}],
+        "services": [],
+        "promotionCode": "SUMMER10",
+    }
+    booking_response = client.post("/api/bookings", json=payload)
+    assert booking_response.status_code == 201
+    booking_id = booking_response.json()["id"]
+
+    response = client.get(f"/api/bookings/{booking_id}")
+    assert response.status_code == 200
+    assert response.json()["id"] == booking_id

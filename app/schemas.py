@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import AliasChoices, BaseModel, Field, ConfigDict, field_validator
 
 
 class CustomerCreate(BaseModel):
@@ -31,8 +31,14 @@ class CruiseRead(BaseModel):
 
 
 class PassengerRequest(BaseModel):
-    first_name: str = Field(..., min_length=1)
-    last_name: str = Field(..., min_length=1)
+    model_config = ConfigDict(populate_by_name=True)
+
+    first_name: str = Field(
+        ..., min_length=1, validation_alias=AliasChoices("first_name", "firstName")
+    )
+    last_name: str = Field(
+        ..., min_length=1, validation_alias=AliasChoices("last_name", "lastName")
+    )
     age: int = Field(..., ge=0)
 
     @field_validator("age")
@@ -44,16 +50,22 @@ class PassengerRequest(BaseModel):
 
 
 class ServiceSelection(BaseModel):
-    service_type: Literal["insurance", "wifi", "shore_excursion"]
+    model_config = ConfigDict(populate_by_name=True)
+
+    service_type: Literal["insurance", "wifi", "shore_excursion"] = Field(
+        ..., validation_alias=AliasChoices("service_type", "serviceType")
+    )
     quantity: int = Field(default=1, ge=1)
 
 
 class QuoteRequest(BaseModel):
-    cruise_id: int
-    customer_id: int
+    model_config = ConfigDict(populate_by_name=True)
+
+    cruise_id: int = Field(..., validation_alias=AliasChoices("cruise_id", "cruiseId"))
+    customer_id: int = Field(..., validation_alias=AliasChoices("customer_id", "customerId"))
     passengers: List[PassengerRequest] = Field(..., min_length=1, max_length=6)
     services: List[ServiceSelection] = Field(default_factory=list)
-    promotion_code: Optional[str] = None
+    promotion_code: Optional[str] = Field(default=None, validation_alias=AliasChoices("promotion_code", "promotionCode"))
 
     @field_validator("passengers")
     @classmethod
@@ -163,10 +175,12 @@ class BookingRead(BaseModel):
 
 
 class PromotionValidateRequest(BaseModel):
-    customer_id: int
-    cruise_id: int
-    code: str
-    booking_total: Decimal = Field(..., ge=Decimal("0"))
+    model_config = ConfigDict(populate_by_name=True)
+
+    customer_id: int = Field(..., validation_alias=AliasChoices("customer_id", "customerId"))
+    cruise_id: int = Field(..., validation_alias=AliasChoices("cruise_id", "cruiseId"))
+    code: str = Field(..., validation_alias=AliasChoices("code", "promoCode"))
+    booking_total: Decimal = Field(..., ge=Decimal("0"), validation_alias=AliasChoices("booking_total", "bookingTotal"))
 
 
 class PromotionValidateResponse(BaseModel):

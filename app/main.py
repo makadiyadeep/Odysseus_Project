@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, create_db_and_tables
@@ -57,8 +57,29 @@ def startup_event():
     seed_data()
 
 
+@app.get("/")
+def root():
+    return RedirectResponse(url="/docs")
+
+
 @app.get("/health")
 def health_check():
+    return {"status": "ok"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+def apple_touch_icon():
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/.well-known/appspecific/com.chrome.devtools.json", include_in_schema=False)
+def chrome_devtools():
     return {"status": "ok"}
 
 
@@ -223,6 +244,12 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)):
 @app.get("/api/bookings/{booking_reference}")
 def get_booking(booking_reference: str, db: Session = Depends(get_db)):
     booking = db.query(Booking).filter(Booking.booking_reference == booking_reference).first()
+    if booking is None:
+        try:
+            booking_id = int(booking_reference)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+        booking = db.query(Booking).filter(Booking.id == booking_id).first()
     if booking is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
     db.refresh(booking)
