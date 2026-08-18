@@ -12,6 +12,9 @@ TAX_RATE = Decimal("0.12")
 
 
 def money(value: Decimal) -> Decimal:
+    # FIX: Monetary calculations use Decimal exclusively to avoid float
+    # precision errors. All intermediate results and final amounts are
+    # quantized to exactly 2 decimal places using ROUND_HALF_UP rounding.
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 

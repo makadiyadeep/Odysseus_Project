@@ -142,6 +142,56 @@ def test_booking_records_promotion_redemption(db):
     assert db.query(PromotionRedemption).first().booking_id == booking.id
 
 
+def test_promotion_minimum_spend_is_valid_at_threshold(db):
+    customer = make_customer(db)
+    cruise = make_cruise(db, capacity_left=10)
+    promotion = make_promotion(
+        db,
+        "THRESHOLD50",
+        "fixed",
+        Decimal("50"),
+        date(2026, 1, 1),
+        date(2026, 12, 31),
+        10,
+        1,
+        Decimal("50"),
+    )
+
+    valid = BookingService.quote(
+        db,
+        customer.id,
+        cruise.id,
+        [make_passenger(18), make_passenger(18)],
+        promotion_code=promotion.code,
+    )
+
+    assert valid["quote_summary"]["promotion_discount"] == Decimal("50.00")
+
+
+def test_promotion_redemption_not_persisted_when_booking_fails(db):
+    customer = make_customer(db)
+    cruise = make_cruise(db, capacity_left=1)
+    make_promotion(
+        db,
+        "SUMMER10",
+        "percentage",
+        Decimal("10"),
+        date(2026, 1, 1),
+        date(2026, 12, 31),
+        10,
+        1,
+        Decimal("1000"),
+    )
+    passengers = [make_passenger(18), make_passenger(18)]
+
+    with pytest.raises(Exception):
+        BookingService.create_booking(db, customer.id, cruise.id, passengers, promotion_code="SUMMER10")
+
+    assert db.query(PromotionRedemption).count() == 0
+    db.refresh(cruise)
+    assert cruise.capacity_left == 1
+
+
 def test_booking_rolls_back_on_failure(db):
     customer = make_customer(db)
     cruise = make_cruise(db, capacity_left=1)
@@ -167,5 +217,5 @@ def test_historical_pricing_remains_fixed(db):
 
     db.refresh(booking)
     assert booking.original_adult_fare == Decimal("1200")
-    assert booking.final_total == Decimal("2710.80")
+    assert booking.final_total == Decimal("2352.00")
     assert booking.cruise_fare_subtotal == Decimal("2100.00")

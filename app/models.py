@@ -173,6 +173,9 @@ class Booking(Base):
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     final_total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    # FIX: Store the original adult fare at booking time to preserve the
+    # complete historical price snapshot. If cruise fares change later, this
+    # record remains unchanged, maintaining an audit trail of charged prices.
     original_adult_fare: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

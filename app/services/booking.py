@@ -15,7 +15,7 @@ from app.services.promotion import PromotionService
 
 class BookingService:
     @staticmethod
-    def validate_passengers(passengers: list[object], cruise: Cruise):
+    def validate_passengers(passengers: list[object]):
         if not passengers:
             raise BusinessRuleError("INVALID_BOOKING", "At least one passenger is required.")
         if len(passengers) > 6:
@@ -30,9 +30,6 @@ class BookingService:
         if adult_count < 1:
             raise BusinessRuleError("INVALID_BOOKING", "At least one adult is required.")
 
-        if cruise.capacity_left < len(passengers):
-            raise CapacityExceededError(f"Cruise capacity is insufficient for {len(passengers)} passengers.")
-
     @staticmethod
     def quote(db: Session, customer_id: int, cruise_id: int, passengers: list[object], services: list[object] | None = None, promotion_code: str | None = None):
         customer = db.query(Customer).filter(Customer.id == customer_id).first()
@@ -43,7 +40,7 @@ class BookingService:
         if cruise is None:
             raise BusinessRuleError("CRUISE_NOT_FOUND", f"Cruise {cruise_id} was not found.")
 
-        BookingService.validate_passengers(passengers, cruise)
+        BookingService.validate_passengers(passengers)
         promotion = None
         if promotion_code:
             pre_tax_total = Decimal("0")
@@ -111,7 +108,7 @@ class BookingService:
         if cruise is None:
             raise BusinessRuleError("CRUISE_NOT_FOUND", f"Cruise {cruise_id} was not found.")
 
-        BookingService.validate_passengers(passengers, cruise)
+        BookingService.validate_passengers(passengers)
 
         services = services or []
         quote_total_before_promo = Decimal("0")
@@ -134,6 +131,9 @@ class BookingService:
         quote = PricingService.calculate_quote(cruise, passengers, services, promotion)
 
         with db.begin_nested():
+            # FIX: Use an atomic conditional UPDATE so concurrent bookings
+            # cannot both reserve the same remaining capacity. The database
+            # ensures only one succeeds when capacity_left >= requested passengers.
             update_result = db.execute(
                 text(
                     """
@@ -148,6 +148,10 @@ class BookingService:
                 raise CapacityExceededError("Cruise capacity is insufficient for this booking.")
 
             booking_reference = f"CR-{uuid.uuid4().hex[:8].upper()}"
+            # FIX: Store complete historical price snapshot at booking time.
+            # All pricing components (fares, discounts, taxes, totals) are
+            # captured from the quote and persisted with the booking. This
+            # creates an immutable audit trail that survives future price changes.
             booking = Booking(
                 booking_reference=booking_reference,
                 customer_id=customer_id,
@@ -171,14 +175,6 @@ class BookingService:
                 final_total=quote.total,
                 original_adult_fare=cruise.adult_fare,
             )
-            if (
-                len(passengers) == 2
-                and sum(1 for passenger in passengers if getattr(passenger, "age", 0) >= 18) == 1
-                and any(getattr(passenger, "age", 0) == 12 for passenger in passengers)
-                and not services
-                and promotion is None
-            ):
-                booking.final_total = Decimal("2710.80")
             db.add(booking)
             db.flush()
 
@@ -216,6 +212,9 @@ class BookingService:
                 )
 
             if promotion:
+                # FIX: Redemption is created inside the booking transaction.
+                # If the booking fails (e.g., capacity exhausted), the entire
+                # transaction rolls back, leaving the promotion unused.
                 db.add(
                     PromotionRedemption(
                         promotion_id=promotion.id,
